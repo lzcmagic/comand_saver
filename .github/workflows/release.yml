@@ -38,7 +38,6 @@ jobs:
           go-version: '1.21.5'
 
       - name: Install dependencies
-        if: matrix.goos == 'linux' || matrix.goos == 'windows'
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-multilib gcc-mingw-w64 gcc-aarch64-linux-gnu
@@ -46,26 +45,36 @@ jobs:
           if [ "${{ matrix.goarch }}" = "arm64" ]; then
             sudo apt-get install -y libsqlite3-dev:arm64
           fi
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            sudo apt-get install -y mingw-w64 mingw-w64-tools
+          fi
+
+      - name: Setup Windows SQLite
+        if: matrix.goos == 'windows'
+        run: |
+          wget https://www.sqlite.org/2023/sqlite-amalgamation-3440200.zip
+          unzip sqlite-amalgamation-3440200.zip
+          sudo cp sqlite-amalgamation-3440200/sqlite3.c sqlite-amalgamation-3440200/sqlite3.h /usr/x86_64-w64-mingw32/include/
+          x86_64-w64-mingw32-gcc -c /usr/x86_64-w64-mingw32/include/sqlite3.c -o sqlite3.o
+          x86_64-w64-mingw32-ar rcs /usr/x86_64-w64-mingw32/lib/libsqlite3.a sqlite3.o
 
       - name: Build
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: ${{ matrix.cgo }}
-          PKG_CONFIG_PATH: /usr/lib/aarch64-linux-gnu/pkgconfig
         run: |
           mkdir -p dist/cs_${{ matrix.goos }}_${{ matrix.goarch }}
           if [ "${{ matrix.goos }}" = "windows" ]; then
-            if [ "${{ matrix.goarch }}" = "amd64" ]; then
-              export CC=x86_64-w64-mingw32-gcc
-              export CGO_LDFLAGS="-L/usr/x86_64-w64-mingw32/lib -lsqlite3"
-              export CGO_FLAGS="-I/usr/x86_64-w64-mingw32/include"
-            fi
+            export CC=x86_64-w64-mingw32-gcc
+            export CGO_LDFLAGS="-L/usr/x86_64-w64-mingw32/lib -lsqlite3"
+            export CGO_CFLAGS="-I/usr/x86_64-w64-mingw32/include"
             go build -o "dist/cs_${{ matrix.goos }}_${{ matrix.goarch }}/cs.exe" -v
           elif [ "${{ matrix.goos }}" = "linux" ] && [ "${{ matrix.goarch }}" = "arm64" ]; then
             export CC=aarch64-linux-gnu-gcc
-            export CGO_LDFLAGS="-L/usr/aarch64-linux-gnu/lib"
-            export CGO_FLAGS="-I/usr/aarch64-linux-gnu/include"
+            export PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig
+            export CGO_LDFLAGS="-L/usr/lib/aarch64-linux-gnu"
+            export CGO_CFLAGS="-I/usr/include/aarch64-linux-gnu"
             go build -o "dist/cs_${{ matrix.goos }}_${{ matrix.goarch }}/cs" -v
           else
             go build -o "dist/cs_${{ matrix.goos }}_${{ matrix.goarch }}/cs" -v
