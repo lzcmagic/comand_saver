@@ -64,6 +64,9 @@ jobs:
     needs: build
     runs-on: ubuntu-22.04
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
       - name: Download artifacts
         uses: actions/download-artifact@v3
         with:
@@ -91,7 +94,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
-          gh release create "$VERSION" dist/*.tar.gz \
+          cd dist
+          gh release create "$VERSION" *.tar.gz \
             --title "Release $VERSION" \
             --notes "Release $VERSION" \
             --draft=false
