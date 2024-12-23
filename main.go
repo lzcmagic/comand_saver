@@ -144,7 +144,7 @@ func getLastCommand() string {
 			}
 		}
 
-		// 排除当前程序的命��和空命令
+		// 排除当前程序的命令和空命令
 		if line == "" ||
 			strings.HasPrefix(line, "./cs") ||
 			strings.HasPrefix(line, "cs ") ||
@@ -346,13 +346,13 @@ func deleteCommand(db *sql.DB, id int) {
 }
 
 func showHelp() {
-	fmt.Println("使用法:")
+	fmt.Println("使用方法:")
 	fmt.Println("  cs                  保存上一条执行的命令")
 	fmt.Println("  cs -l               列出所有保存的命令")
 	fmt.Println("  cs -d               按天显示最近7天的命令")
 	fmt.Println("  cs -y <命令>        直接保存指定的命令")
 	fmt.Println("  cs -rm <id>         删除指定ID的命令记录")
-	fmt.Println("  cs -h               显示帮助��息")
+	fmt.Println("  cs -h               显示帮助信息")
 	fmt.Println("  cs -c               清理数据库")
 }
 
