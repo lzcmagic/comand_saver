@@ -183,6 +183,26 @@ func getLastCommand() string {
 			return ""
 		}
 
+		// 检查命令是否执行成功
+		cmdParts := strings.Fields(lastCmd)
+		if len(cmdParts) == 0 {
+			fmt.Println("无效的命令格式")
+			return ""
+		}
+
+		// 使用which命令检查命令是否存在
+		var checkCmd *exec.Cmd
+		if runtime.GOOS == "windows" {
+			checkCmd = exec.Command("where", cmdParts[0])
+		} else {
+			checkCmd = exec.Command("which", cmdParts[0])
+		}
+
+		if err := checkCmd.Run(); err != nil {
+			fmt.Printf("命令 '%s' 不存在或执行失败，不进行保存\n", cmdParts[0])
+			return ""
+		}
+
 		return lastCmd
 	}
 
@@ -200,7 +220,7 @@ func getLastCommand() string {
 		return ""
 	}
 
-	// 检查命令是否存在且可执行
+	// 检查命令是否执行成功
 	cmdParts := strings.Fields(lastCmd)
 	if len(cmdParts) == 0 {
 		fmt.Println("无效的命令格式")
@@ -216,7 +236,7 @@ func getLastCommand() string {
 	}
 
 	if err := checkCmd.Run(); err != nil {
-		fmt.Println("上一条命令执行出错，不进行保存")
+		fmt.Printf("命令 '%s' 不存在或执行失败，不进行保存\n", cmdParts[0])
 		return ""
 	}
 
@@ -344,7 +364,7 @@ func cleanDatabase() {
 
 	// 检查文件是否存在
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-		fmt.Println("数据���文件不存在")
+		fmt.Println("数据库文件不存在")
 		return
 	}
 
