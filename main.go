@@ -153,7 +153,8 @@ func getLastCommand() string {
 			strings.HasPrefix(line, "./cs") ||
 			strings.HasPrefix(line, "cs ") ||
 			strings.HasPrefix(line, "tail") ||
-			strings.HasPrefix(line, "type") {
+			strings.HasPrefix(line, "type") ||
+			strings.HasPrefix(line, "go run main.go") {
 			continue
 		}
 
