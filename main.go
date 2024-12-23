@@ -4,10 +4,11 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
-	_ "github.com/mattn/go-sqlite3"
-	"os/exec"
+
+	_ "modernc.org/sqlite"
 )
 
 func initDB() *sql.DB {
@@ -15,7 +16,7 @@ func initDB() *sql.DB {
 	home := os.Getenv("HOME")
 	dbDir := home + "/.command_saver"
 	dbPath := dbDir + "/commands.db"
-	
+
 	// 检查目录是否存在，如果不存在则创建
 	if _, err := os.Stat(dbDir); os.IsNotExist(err) {
 		fmt.Printf("数据库目录不存在，正在创建: %s\n", dbDir)
@@ -23,7 +24,7 @@ func initDB() *sql.DB {
 			panic(fmt.Sprintf("创建数据库目录失败: %v", err))
 		}
 	}
-	
+
 	// 打开或创建数据库
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
@@ -105,7 +106,7 @@ func getLastCommand() string {
 
 	// 按行分割输出
 	lines := strings.Split(string(output), "\n")
-	
+
 	// 获取最后一行非空命令
 	var lastCmd string
 	for i := len(lines) - 1; i >= 0; i-- {
@@ -123,10 +124,10 @@ func getLastCommand() string {
 		}
 
 		// 排除当前程序的命令和空命令
-		if line == "" || 
-		   strings.HasPrefix(line, "./cs") || 
-		   strings.HasPrefix(line, "cs ") || 
-		   strings.HasPrefix(line, "tail") {
+		if line == "" ||
+			strings.HasPrefix(line, "./cs") ||
+			strings.HasPrefix(line, "cs ") ||
+			strings.HasPrefix(line, "tail") {
 			continue
 		}
 
@@ -209,29 +210,29 @@ func listCommandsByDay(db *sql.DB) {
 	defer rows.Close()
 
 	fmt.Println("\n最近7天的命令历史:")
-	
+
 	for rows.Next() {
 		var day string
 		var ids, commands, descriptions, times string
-		
+
 		err := rows.Scan(&day, &ids, &commands, &descriptions, &times)
 		if err != nil {
 			fmt.Println("读取数据时出错:", err)
 			continue
 		}
-		
+
 		// 打印日期分隔线
 		fmt.Printf("\n=== %s ===\n", day)
 		fmt.Println("--------------------------------------------------------------------------------")
 		fmt.Printf("%-6s | %-30s | %-30s | %s\n", "ID", "时间", "命令", "描述")
 		fmt.Println("--------------------------------------------------------------------------------")
-		
+
 		// 分割每一天的数据
 		idList := strings.Split(ids, ",")
 		cmdList := strings.Split(commands, ",")
 		descList := strings.Split(descriptions, ",")
 		timeList := strings.Split(times, ",")
-		
+
 		// 确保所有切片长度一致
 		length := len(idList)
 		for i := 0; i < length; i++ {
@@ -241,11 +242,11 @@ func listCommandsByDay(db *sql.DB) {
 			if desc == "" {
 				desc = "-"
 			}
-			
+
 			// 解析并格式化时间
 			t, _ := time.Parse("2006-01-02 15:04:05", strings.Split(timeList[i], ".")[0])
 			timeStr := t.Format("15:04:05")
-			
+
 			fmt.Printf("%-6s | %-30s | %-30s | %s\n", id, timeStr, cmd, desc)
 		}
 		fmt.Println("--------------------------------------------------------------------------------")
@@ -256,32 +257,32 @@ func cleanDatabase() {
 	// 获取数据库文件路径
 	home := os.Getenv("HOME")
 	dbPath := home + "/.command_saver/commands.db"
-	
+
 	// 检查文件是否存在
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
 		fmt.Println("数据库文件不存在")
 		return
 	}
-	
+
 	// 询问用户确认
 	fmt.Print("警告：此操作将删除所有保存的命令历史记录，确定要继续吗？(y/N): ")
 	var response string
 	fmt.Scanln(&response)
-	
+
 	// 检查用户响应
 	response = strings.ToLower(strings.TrimSpace(response))
 	if response != "y" && response != "yes" {
 		fmt.Println("操作已取消")
 		return
 	}
-	
+
 	// 删除数据库文件
 	err := os.Remove(dbPath)
 	if err != nil {
 		fmt.Printf("删除数据库文件失败: %v\n", err)
 		return
 	}
-	
+
 	fmt.Println("数据库已清除")
 }
 
@@ -366,20 +367,20 @@ func main() {
 				fmt.Println("错误: 使用 -y 参数时必须提供要保存的命令")
 				return
 			}
-			
+
 			// 获取命令和描述
 			command := os.Args[2]
 			description := "default"
-			
+
 			// 如果有第三个参数，则作为描述
 			if len(os.Args) > 3 {
 				description = os.Args[3]
 			}
-			
+
 			// 去除命令和描述中的引号
 			command = strings.Trim(command, "\"")
 			description = strings.Trim(description, "\"")
-			
+
 			db := initDB()
 			defer db.Close()
 			saveCommand(db, command, description)
@@ -408,4 +409,4 @@ func main() {
 
 	// 保存到数据库
 	saveCommand(db, lastCommand, description)
-} 
+}
