@@ -115,54 +115,88 @@ func getLastCommand() string {
 		return ""
 	}
 
-	// 读取历史文件内容
-	content, err := os.ReadFile(histFile)
+	// 使用 fc 命令获取最后一条命令
+	var cmd *exec.Cmd
+	if isZsh {
+		cmd = exec.Command("zsh", "-i", "-c", "fc -ln -1")
+	} else {
+		cmd = exec.Command("bash", "-i", "-c", "fc -ln -1")
+	}
+
+	// 设置环境变量
+	cmd.Env = append(os.Environ(),
+		"HISTFILE="+histFile,
+		"HISTSIZE=1000",
+		"SAVEHIST=1000",
+		"LC_ALL=en_US.UTF-8",
+		"LANG=en_US.UTF-8",
+	)
+
+	output, err := cmd.Output()
 	if err != nil {
-		fmt.Printf("读取历史文件出错: %v\n", err)
-		return ""
-	}
-
-	// 按行分割输出
-	lines := strings.Split(string(content), "\n")
-
-	// 获取最后几行
-	startIdx := len(lines) - 10
-	if startIdx < 0 {
-		startIdx = 0
-	}
-	lines = lines[startIdx:]
-
-	// 获取最后一行非空命令
-	var lastCmd string
-	for i := len(lines) - 1; i >= 0; i-- {
-		line := strings.TrimSpace(lines[i])
-		if line == "" {
-			continue
+		// 如果 fc 命令失败，尝试直接读取历史文件
+		content, err := os.ReadFile(histFile)
+		if err != nil {
+			fmt.Printf("读取历史文件出错: %v\n", err)
+			return ""
 		}
 
-		// 处理 zsh 特殊格式
-		if isZsh && strings.Contains(line, ";") {
-			parts := strings.SplitN(line, ";", 2)
-			if len(parts) >= 2 {
-				line = strings.TrimSpace(parts[1])
+		lines := strings.Split(string(content), "\n")
+		startIdx := len(lines) - 10
+		if startIdx < 0 {
+			startIdx = 0
+		}
+		lines = lines[startIdx:]
+
+		// 获取最后一行非空命令
+		var lastCmd string
+		for i := len(lines) - 1; i >= 0; i-- {
+			line := strings.TrimSpace(lines[i])
+			if line == "" {
+				continue
 			}
+
+			// 处理 zsh 特殊格式
+			if isZsh && strings.Contains(line, ";") {
+				parts := strings.SplitN(line, ";", 2)
+				if len(parts) >= 2 {
+					line = strings.TrimSpace(parts[1])
+				}
+			}
+
+			// 排除当前程序的命令和空命令
+			if line == "" ||
+				strings.HasPrefix(line, "./cs") ||
+				strings.HasPrefix(line, "cs ") ||
+				strings.HasPrefix(line, "tail") ||
+				strings.HasPrefix(line, "type") ||
+				strings.HasPrefix(line, "go run main.go") ||
+				strings.HasPrefix(line, "fc") {
+				continue
+			}
+
+			lastCmd = line
+			break
 		}
 
-		// 排除当前程序的命令和空命令
-		if line == "" ||
-			strings.HasPrefix(line, "./cs") ||
-			strings.HasPrefix(line, "cs ") ||
-			strings.HasPrefix(line, "tail") ||
-			strings.HasPrefix(line, "type") ||
-			strings.HasPrefix(line, "go run main.go") {
-			continue
+		if lastCmd == "" {
+			return ""
 		}
 
-		lastCmd = line
-		break
+		return lastCmd
 	}
 
-	if lastCmd == "" {
+	// 处理 fc 命令的输出
+	lastCmd := strings.TrimSpace(string(output))
+
+	// 排除当前程序的命令和空命令
+	if lastCmd == "" ||
+		strings.HasPrefix(lastCmd, "./cs") ||
+		strings.HasPrefix(lastCmd, "cs ") ||
+		strings.HasPrefix(lastCmd, "tail") ||
+		strings.HasPrefix(lastCmd, "type") ||
+		strings.HasPrefix(lastCmd, "go run main.go") ||
+		strings.HasPrefix(lastCmd, "fc") {
 		return ""
 	}
 
@@ -267,7 +301,7 @@ func listCommandsByDay(db *sql.DB) {
 		fmt.Printf("%-6s | %-30s | %-30s | %s\n", "ID", "时间", "命令", "描述")
 		fmt.Println("--------------------------------------------------------------------------------")
 
-		// 如果这一天没有��令，继续下一天
+		// 如果这一天没有命令，继续下一天
 		if !ids.Valid || ids.String == "" {
 			fmt.Println("(没有记录)")
 			continue
@@ -310,7 +344,7 @@ func cleanDatabase() {
 
 	// 检查文件是否存在
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-		fmt.Println("数据库文件不存在")
+		fmt.Println("数据���文件不存在")
 		return
 	}
 
