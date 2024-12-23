@@ -42,21 +42,30 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-multilib gcc-mingw-w64 gcc-aarch64-linux-gnu
+          sudo apt-get install -y libsqlite3-dev
+          if [ "${{ matrix.goarch }}" = "arm64" ]; then
+            sudo apt-get install -y libsqlite3-dev:arm64
+          fi
 
       - name: Build
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: ${{ matrix.cgo }}
+          PKG_CONFIG_PATH: /usr/lib/aarch64-linux-gnu/pkgconfig
         run: |
           mkdir -p dist/cs_${{ matrix.goos }}_${{ matrix.goarch }}
           if [ "${{ matrix.goos }}" = "windows" ]; then
             if [ "${{ matrix.goarch }}" = "amd64" ]; then
               export CC=x86_64-w64-mingw32-gcc
+              export CGO_LDFLAGS="-L/usr/x86_64-w64-mingw32/lib -lsqlite3"
+              export CGO_FLAGS="-I/usr/x86_64-w64-mingw32/include"
             fi
             go build -o "dist/cs_${{ matrix.goos }}_${{ matrix.goarch }}/cs.exe" -v
           elif [ "${{ matrix.goos }}" = "linux" ] && [ "${{ matrix.goarch }}" = "arm64" ]; then
             export CC=aarch64-linux-gnu-gcc
+            export CGO_LDFLAGS="-L/usr/aarch64-linux-gnu/lib"
+            export CGO_FLAGS="-I/usr/aarch64-linux-gnu/include"
             go build -o "dist/cs_${{ matrix.goos }}_${{ matrix.goarch }}/cs" -v
           else
             go build -o "dist/cs_${{ matrix.goos }}_${{ matrix.goarch }}/cs" -v
