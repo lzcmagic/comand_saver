@@ -58,6 +58,10 @@ func initDB() *sql.DB {
 }
 
 func saveCommand(db *sql.DB, command, description string) {
+	// 清理输入
+	command = strings.TrimSpace(command)
+	description = strings.TrimSpace(description)
+
 	stmt, err := db.Prepare("INSERT INTO command_history(command, description, created_at) VALUES(?, ?, ?)")
 	if err != nil {
 		fmt.Println("准备SQL语句时出错:", err)
@@ -220,16 +224,23 @@ func listCommands(db *sql.DB) {
 func listCommandsByDay(db *sql.DB) {
 	// 查询近7天的命令，按天分组
 	rows, err := db.Query(`
+		WITH RECURSIVE dates(date) AS (
+			SELECT date('now', '-6 days')
+			UNION ALL
+			SELECT date(date, '+1 day')
+			FROM dates
+			WHERE date < date('now')
+		)
 		SELECT 
-			DATE(created_at) as day,
+			dates.date as day,
 			GROUP_CONCAT(id) as ids,
 			GROUP_CONCAT(command) as commands,
 			GROUP_CONCAT(description) as descriptions,
 			GROUP_CONCAT(created_at) as times
-		FROM command_history 
-		WHERE created_at >= date('now', '-7 days')
-		GROUP BY DATE(created_at)
-		ORDER BY day DESC
+		FROM dates 
+		LEFT JOIN command_history ON date(command_history.created_at) = dates.date
+		GROUP BY dates.date
+		ORDER BY dates.date DESC
 	`)
 	if err != nil {
 		fmt.Println("查询数据库时出错:", err)
@@ -241,7 +252,7 @@ func listCommandsByDay(db *sql.DB) {
 
 	for rows.Next() {
 		var day string
-		var ids, commands, descriptions, times string
+		var ids, commands, descriptions, times sql.NullString
 
 		err := rows.Scan(&day, &ids, &commands, &descriptions, &times)
 		if err != nil {
@@ -255,11 +266,17 @@ func listCommandsByDay(db *sql.DB) {
 		fmt.Printf("%-6s | %-30s | %-30s | %s\n", "ID", "时间", "命令", "描述")
 		fmt.Println("--------------------------------------------------------------------------------")
 
+		// 如果这一天没有命令，继续下一天
+		if !ids.Valid || ids.String == "" {
+			fmt.Println("(没有记录)")
+			continue
+		}
+
 		// 分割每一天的数据
-		idList := strings.Split(ids, ",")
-		cmdList := strings.Split(commands, ",")
-		descList := strings.Split(descriptions, ",")
-		timeList := strings.Split(times, ",")
+		idList := strings.Split(ids.String, ",")
+		cmdList := strings.Split(commands.String, ",")
+		descList := strings.Split(descriptions.String, ",")
+		timeList := strings.Split(times.String, ",")
 
 		// 确保所有切片长度一致
 		length := len(idList)
@@ -401,17 +418,17 @@ func main() {
 			}
 
 			// 获取命令和描述
-			command := os.Args[2]
+			command := strings.TrimSpace(os.Args[2])
 			description := "default"
 
 			// 如果有第三个参数，则作为描述
 			if len(os.Args) > 3 {
-				description = os.Args[3]
+				description = strings.TrimSpace(strings.Join(os.Args[3:], " "))
 			}
 
 			// 去除命令和描述中的引号
-			command = strings.Trim(command, "\"")
-			description = strings.Trim(description, "\"")
+			command = strings.Trim(command, "\"'")
+			description = strings.Trim(description, "\"'")
 
 			db := initDB()
 			defer db.Close()
@@ -434,7 +451,7 @@ func main() {
 	// 获取可选的描述
 	var description string
 	if len(os.Args) > 1 {
-		description = strings.Join(os.Args[1:], " ")
+		description = strings.TrimSpace(strings.Join(os.Args[1:], " "))
 	} else {
 		description = "default"
 	}
