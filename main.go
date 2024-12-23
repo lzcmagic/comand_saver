@@ -26,7 +26,7 @@ func initDB() *sql.DB {
 	}
 
 	// 打开或创建数据库
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
 		panic(fmt.Sprintf("打开数据库失败: %v", err))
 	}
@@ -314,7 +314,7 @@ func deleteCommand(db *sql.DB, id int) {
 }
 
 func showHelp() {
-	fmt.Println("使用方法:")
+	fmt.Println("使用���法:")
 	fmt.Println("  cs                  保存上一条执行的命令")
 	fmt.Println("  cs -l               列出所有保存的命令")
 	fmt.Println("  cs -d               按天显示最近7天的命令")
