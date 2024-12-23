@@ -144,7 +144,7 @@ func getLastCommand() string {
 			}
 		}
 
-		// 排除当前程序的命令和空命令
+		// 排除当前程序的命��和空命令
 		if line == "" ||
 			strings.HasPrefix(line, "./cs") ||
 			strings.HasPrefix(line, "cs ") ||
@@ -216,7 +216,7 @@ func listCommands(db *sql.DB) {
 	fmt.Println("--------------------------------------------------------------------------------")
 }
 
-// 添加新的函数来显示��天分组的命令
+// 添加新的函数来显示天分组的命令
 func listCommandsByDay(db *sql.DB) {
 	// 查询近7天的命令，按天分组
 	rows, err := db.Query(`
@@ -283,8 +283,12 @@ func listCommandsByDay(db *sql.DB) {
 
 func cleanDatabase() {
 	// 获取数据库文件路径
-	home := os.Getenv("HOME")
-	dbPath := home + "/.command_saver/commands.db"
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Printf("获取用户主目录失败: %v\n", err)
+		return
+	}
+	dbPath := filepath.Join(home, ".command_saver", "commands.db")
 
 	// 检查文件是否存在
 	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
@@ -305,7 +309,7 @@ func cleanDatabase() {
 	}
 
 	// 删除数据库文件
-	err := os.Remove(dbPath)
+	err = os.Remove(dbPath)
 	if err != nil {
 		fmt.Printf("删除数据库文件失败: %v\n", err)
 		return
@@ -348,7 +352,7 @@ func showHelp() {
 	fmt.Println("  cs -d               按天显示最近7天的命令")
 	fmt.Println("  cs -y <命令>        直接保存指定的命令")
 	fmt.Println("  cs -rm <id>         删除指定ID的命令记录")
-	fmt.Println("  cs -h               显示帮助信息")
+	fmt.Println("  cs -h               显示帮助��息")
 	fmt.Println("  cs -c               清理数据库")
 }
 
