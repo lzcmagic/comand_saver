@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -13,9 +15,14 @@ import (
 
 func initDB() *sql.DB {
 	// 获取用户主目录
-	home := os.Getenv("HOME")
-	dbDir := home + "/.command_saver"
-	dbPath := dbDir + "/commands.db"
+	home, err := os.UserHomeDir()
+	if err != nil {
+		panic(fmt.Sprintf("获取用户主目录失败: %v", err))
+	}
+
+	// 使用 filepath.Join 来处理跨平台的路径
+	dbDir := filepath.Join(home, ".command_saver")
+	dbPath := filepath.Join(dbDir, "commands.db")
 
 	// 检查目录是否存在，如果不存在则创建
 	if _, err := os.Stat(dbDir); os.IsNotExist(err) {
@@ -72,6 +79,12 @@ func saveCommand(db *sql.DB, command, description string) {
 }
 
 func getLastCommand() string {
+	// Windows 平台暂不支持自动获取上一条命令
+	if runtime.GOOS == "windows" {
+		fmt.Println("Windows 平台暂不支持自动获取上一条命令，请使用 -y 参数手动保存命令")
+		return ""
+	}
+
 	// 检测当前的 shell
 	shell := os.Getenv("SHELL")
 
@@ -80,10 +93,12 @@ func getLastCommand() string {
 
 	// 判断shell类型
 	if strings.Contains(shell, "zsh") {
-		histFile = os.Getenv("HOME") + "/.zsh_history"
+		home, _ := os.UserHomeDir()
+		histFile = filepath.Join(home, ".zsh_history")
 		isZsh = true
 	} else if strings.Contains(shell, "bash") {
-		histFile = os.Getenv("HOME") + "/.bash_history"
+		home, _ := os.UserHomeDir()
+		histFile = filepath.Join(home, ".bash_history")
 		isZsh = false
 	} else {
 		fmt.Println("不支持的shell类型")
@@ -97,7 +112,13 @@ func getLastCommand() string {
 	}
 
 	// 读取最后几行命令
-	cmd := exec.Command("tail", "-n", "2", histFile)
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("type", histFile)
+	} else {
+		cmd = exec.Command("tail", "-n", "2", histFile)
+	}
+
 	output, err := cmd.Output()
 	if err != nil {
 		fmt.Printf("读取历史文件出错: %v\n", err)
@@ -127,7 +148,8 @@ func getLastCommand() string {
 		if line == "" ||
 			strings.HasPrefix(line, "./cs") ||
 			strings.HasPrefix(line, "cs ") ||
-			strings.HasPrefix(line, "tail") {
+			strings.HasPrefix(line, "tail") ||
+			strings.HasPrefix(line, "type") {
 			continue
 		}
 
@@ -147,7 +169,13 @@ func getLastCommand() string {
 	}
 
 	// 使用which命令检查命令是否存在
-	checkCmd := exec.Command("which", cmdParts[0])
+	var checkCmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		checkCmd = exec.Command("where", cmdParts[0])
+	} else {
+		checkCmd = exec.Command("which", cmdParts[0])
+	}
+
 	if err := checkCmd.Run(); err != nil {
 		fmt.Println("上一条命令执行出错，不进行保存")
 		return ""
@@ -188,7 +216,7 @@ func listCommands(db *sql.DB) {
 	fmt.Println("--------------------------------------------------------------------------------")
 }
 
-// 添加新的函数来显示按天分组的命令
+// 添加新的函数来显示��天分组的命令
 func listCommandsByDay(db *sql.DB) {
 	// 查询近7天的命令，按天分组
 	rows, err := db.Query(`
@@ -314,7 +342,7 @@ func deleteCommand(db *sql.DB, id int) {
 }
 
 func showHelp() {
-	fmt.Println("使用���法:")
+	fmt.Println("使用法:")
 	fmt.Println("  cs                  保存上一条执行的命令")
 	fmt.Println("  cs -l               列出所有保存的命令")
 	fmt.Println("  cs -d               按天显示最近7天的命令")
