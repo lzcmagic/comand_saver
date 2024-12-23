@@ -115,22 +115,22 @@ func getLastCommand() string {
 		return ""
 	}
 
-	// 读取最后几行命令
-	var cmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		cmd = exec.Command("type", histFile)
-	} else {
-		cmd = exec.Command("tail", "-n", "2", histFile)
-	}
-
-	output, err := cmd.Output()
+	// 读取历史文件内容
+	content, err := os.ReadFile(histFile)
 	if err != nil {
 		fmt.Printf("读取历史文件出错: %v\n", err)
 		return ""
 	}
 
 	// 按行分割输出
-	lines := strings.Split(string(output), "\n")
+	lines := strings.Split(string(content), "\n")
+
+	// 获取最后几行
+	startIdx := len(lines) - 10
+	if startIdx < 0 {
+		startIdx = 0
+	}
+	lines = lines[startIdx:]
 
 	// 获取最后一行非空命令
 	var lastCmd string
@@ -267,7 +267,7 @@ func listCommandsByDay(db *sql.DB) {
 		fmt.Printf("%-6s | %-30s | %-30s | %s\n", "ID", "时间", "命令", "描述")
 		fmt.Println("--------------------------------------------------------------------------------")
 
-		// 如果这一天没有命令，继续下一天
+		// 如果这一天没有��令，继续下一天
 		if !ids.Valid || ids.String == "" {
 			fmt.Println("(没有记录)")
 			continue
