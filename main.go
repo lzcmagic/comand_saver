@@ -285,12 +285,40 @@ func cleanDatabase() {
 	fmt.Println("数据库已清除")
 }
 
+func deleteCommand(db *sql.DB, id int) {
+	// 首先检查记录是否存在
+	var exists bool
+	err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM command_history WHERE id = ?)", id).Scan(&exists)
+	if err != nil {
+		fmt.Printf("检查记录时出错: %v\n", err)
+		return
+	}
+
+	if !exists {
+		fmt.Printf("未找到ID为 %d 的记录\n", id)
+		return
+	}
+
+	// 执行删除操作
+	result, err := db.Exec("DELETE FROM command_history WHERE id = ?", id)
+	if err != nil {
+		fmt.Printf("删除记录时出错: %v\n", err)
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected > 0 {
+		fmt.Printf("成功删除ID为 %d 的记录\n", id)
+	}
+}
+
 func showHelp() {
 	fmt.Println("使用方法:")
 	fmt.Println("  cs                  保存上一条执行的命令")
 	fmt.Println("  cs -l               列出所有保存的命令")
 	fmt.Println("  cs -d               按天显示最近7天的命令")
 	fmt.Println("  cs -y <命令>        直接保存指定的命令")
+	fmt.Println("  cs -rm <id>         删除指定ID的命令记录")
 	fmt.Println("  cs -h               显示帮助信息")
 	fmt.Println("  cs -c               清理数据库")
 }
@@ -317,6 +345,21 @@ func main() {
 			return
 		case "-c":
 			cleanDatabase()
+			return
+		case "-rm":
+			if len(os.Args) != 3 {
+				fmt.Println("错误: 使用 -rm 参数时必须提供要删除的记录ID")
+				return
+			}
+			id := 0
+			_, err := fmt.Sscanf(os.Args[2], "%d", &id)
+			if err != nil || id <= 0 {
+				fmt.Println("错误: ID必须是一个有效的正整数")
+				return
+			}
+			db := initDB()
+			defer db.Close()
+			deleteCommand(db, id)
 			return
 		case "-y":
 			if len(os.Args) < 3 {
