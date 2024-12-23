@@ -27,6 +27,59 @@ cs -h               # 显示帮助信息
 cs -c               # 清理数据库
 ```
 
+## 使用示例
+
+### 1. 自动保存上一条命令
+
+```bash
+$ ls -la /home/user/documents  # 执行一个普通命令
+$ cs                          # 保存上一条命令
+已保存命令: ls -la /home/user/documents
+```
+
+### 2. 手动保存命令
+
+```bash
+$ cs -y "docker run -d -p 80:80 nginx"  # 直接保存指定命令
+已保存命令: docker run -d -p 80:80 nginx
+```
+
+### 3. 查看保存的命令
+
+```bash
+$ cs -l
+ID  | 命令                              | 时间
+1   | ls -la /home/user/documents       | 2023-12-23 14:30:25
+2   | docker run -d -p 80:80 nginx      | 2023-12-23 14:35:10
+```
+
+### 4. 按天查看命令历史
+
+```bash
+$ cs -d
+=== 2023-12-23 ===
+- ls -la /home/user/documents
+- docker run -d -p 80:80 nginx
+
+=== 2023-12-22 ===
+- git push origin main
+- npm install express
+```
+
+### 5. 删除命令记录
+
+```bash
+$ cs -rm 1                    # 删除ID为1的命令记录
+已删除ID为1的命令记录
+```
+
+### 6. 清理数据库
+
+```bash
+$ cs -c                       # 清理数据库
+数据库已清理完成
+```
+
 ## 开发
 
 ### 依赖
