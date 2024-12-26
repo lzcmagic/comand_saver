@@ -161,6 +161,7 @@ func getLastCommand() string {
 		if line == "" ||
 			strings.HasPrefix(line, "./cs") ||
 			strings.HasPrefix(line, "cs ") ||
+			line == "cs" ||
 			strings.HasPrefix(line, "go run main.go") {
 			continue
 		}
@@ -197,8 +198,6 @@ func getLastCommand() string {
 				continue
 			}
 		}
-
-		fmt.Printf("找到最后一条命令: %s\n", line)
 		return line
 	}
 
@@ -560,7 +559,7 @@ func main() {
 			command := strings.TrimSpace(os.Args[2])
 			description := "default"
 
-			// 如果有第三个参数，则作为描���
+			// 如果有第三个参数，则作为描述
 			if len(os.Args) > 3 {
 				description = strings.TrimSpace(strings.Join(os.Args[3:], " "))
 			}
