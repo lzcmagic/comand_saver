@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -283,7 +284,7 @@ func listCommandsByDay(db *sql.DB) {
 		fmt.Printf("%-6s | %-30s | %-30s | %s\n", "ID", "时间", "命令", "描述")
 		fmt.Println("--------------------------------------------------------------------------------")
 
-		// 如果这一天没有��令，继续下一天
+		// 如果这一天没有命令，继续下一天
 		if !ids.Valid || ids.String == "" {
 			fmt.Println("(没有记录)")
 			continue
@@ -379,17 +380,134 @@ func deleteCommand(db *sql.DB, id int) {
 
 	rowsAffected, _ := result.RowsAffected()
 	if rowsAffected > 0 {
-		fmt.Printf("成功删除ID为 %d ��记录\n", id)
+		fmt.Printf("成功删除ID为 %d 的记录\n", id)
 	}
+}
+
+// 添加新的结构体用于JSON导出
+type CommandRecord struct {
+	ID          int       `json:"id"`
+	Command     string    `json:"command"`
+	Description string    `json:"description"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+func exportToJSON(db *sql.DB, filename string) {
+	// 如果文件名为空，使用默认文件名
+	if filename == "" {
+		timestamp := time.Now().Format("20060102_150405")
+		filename = fmt.Sprintf("bak%s.json", timestamp)
+	}
+
+	// 获取数据库目录
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Printf("获取用户主目录失败: %v\n", err)
+		return
+	}
+	dbDir := filepath.Join(home, ".command_saver")
+	outputPath := filepath.Join(dbDir, filename)
+
+	// 查询所有命令记录
+	rows, err := db.Query(`
+		SELECT id, command, description, created_at 
+		FROM command_history 
+		ORDER BY created_at DESC
+	`)
+	if err != nil {
+		fmt.Printf("查询数据库失败: %v\n", err)
+		return
+	}
+	defer rows.Close()
+
+	// 读取所有记录
+	var records []CommandRecord
+	for rows.Next() {
+		var record CommandRecord
+		err := rows.Scan(&record.ID, &record.Command, &record.Description, &record.CreatedAt)
+		if err != nil {
+			fmt.Printf("读取记录失败: %v\n", err)
+			return
+		}
+		records = append(records, record)
+	}
+
+	// 转换为JSON
+	jsonData, err := json.MarshalIndent(records, "", "    ")
+	if err != nil {
+		fmt.Printf("转换JSON失败: %v\n", err)
+		return
+	}
+
+	// 写入文件
+	err = os.WriteFile(outputPath, jsonData, 0644)
+	if err != nil {
+		fmt.Printf("写入文件失败: %v\n", err)
+		return
+	}
+
+	fmt.Printf("命令历史已导出到: %s\n", outputPath)
+}
+
+func importFromJSON(db *sql.DB, filename string) {
+	if filename == "" {
+		fmt.Println("错误: 请指定要导入的JSON文件路径")
+		fmt.Println("使用方法: cs -i \"<备份文件路径>\"")
+		return
+	}
+
+	// 读取JSON文件
+	jsonData, err := os.ReadFile(filename)
+	if err != nil {
+		fmt.Printf("读取文件失败: %v\n", err)
+		return
+	}
+
+	// 解析JSON数据
+	var records []CommandRecord
+	if err := json.Unmarshal(jsonData, &records); err != nil {
+		fmt.Printf("解析JSON失败: %v\n", err)
+		return
+	}
+
+	if len(records) == 0 {
+		fmt.Println("文件中没有找到任何命令记录")
+		return
+	}
+
+	// 准备插入语句
+	stmt, err := db.Prepare("INSERT INTO command_history(command, description, created_at) VALUES(?, ?, ?)")
+	if err != nil {
+		fmt.Printf("准备SQL语句失败: %v\n", err)
+		return
+	}
+	defer stmt.Close()
+
+	// 开始导入
+	fmt.Printf("开始导入 %d 条命令记录...\n", len(records))
+	successCount := 0
+
+	for _, record := range records {
+		_, err := stmt.Exec(record.Command, record.Description, record.CreatedAt)
+		if err != nil {
+			fmt.Printf("导入命令 '%s' 失败: %v\n", record.Command, err)
+			continue
+		}
+		successCount++
+	}
+
+	fmt.Printf("导入完成: 成功导入 %d/%d 条记录\n", successCount, len(records))
 }
 
 func showHelp() {
 	fmt.Println("使用方法:")
-	fmt.Println("  cs                  保存上一条执行的命令")
+	fmt.Println("  cs [描述]            保存上一条执行的命令")
 	fmt.Println("  cs -l               列出所有保存的命令")
 	fmt.Println("  cs -d               按天显示最近7天的命令")
-	fmt.Println("  cs -y <命令>        直接保存指定的命令")
+	fmt.Println("  cs -y <命令> [描述]  直接保存指定的命令")
 	fmt.Println("  cs -rm <id>         删除指定ID的命令记录")
+	fmt.Println("  cs -o [文件名]       导出命令历史到JSON文件")
+	fmt.Println("  cs -i <文件名>       从JSON文件导入命令历史")
 	fmt.Println("  cs -h               显示帮助信息")
 	fmt.Println("  cs -c               清理数据库")
 }
@@ -425,7 +543,7 @@ func main() {
 			id := 0
 			_, err := fmt.Sscanf(os.Args[2], "%d", &id)
 			if err != nil || id <= 0 {
-				fmt.Println("错误: ID必须��一个有效的正整数")
+				fmt.Println("错误: ID必须是一个有效的正整数")
 				return
 			}
 			db := initDB()
@@ -442,7 +560,7 @@ func main() {
 			command := strings.TrimSpace(os.Args[2])
 			description := "default"
 
-			// 如果有第三个参数，则作为描述
+			// 如果有第三个参数，则作为描���
 			if len(os.Args) > 3 {
 				description = strings.TrimSpace(strings.Join(os.Args[3:], " "))
 			}
@@ -454,6 +572,24 @@ func main() {
 			db := initDB()
 			defer db.Close()
 			saveCommand(db, command, description)
+			return
+		case "-o":
+			db := initDB()
+			defer db.Close()
+			var filename string
+			if len(os.Args) > 2 {
+				filename = strings.Trim(os.Args[2], "\"'")
+			}
+			exportToJSON(db, filename)
+			return
+		case "-i":
+			db := initDB()
+			defer db.Close()
+			var filename string
+			if len(os.Args) > 2 {
+				filename = strings.Trim(os.Args[2], "\"'")
+			}
+			importFromJSON(db, filename)
 			return
 		}
 	}
