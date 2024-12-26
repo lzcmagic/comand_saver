@@ -161,24 +161,53 @@ func getLastCommand() string {
 		return ""
 	}
 
-	// 检查命令是否执行成功
+	// 检查命令是否有效
 	cmdParts := strings.Fields(lastCmd)
 	if len(cmdParts) == 0 {
 		fmt.Println("无效的命令格式")
 		return ""
 	}
 
-	// 使用which命令检查命令是否存在
-	var checkCmd *exec.Cmd
-	if runtime.GOOS == "windows" {
-		checkCmd = exec.Command("where", cmdParts[0])
-	} else {
-		checkCmd = exec.Command("which", cmdParts[0])
-	}
+	// 检查命令是否存在
+	cmdName := cmdParts[0]
 
-	if err := checkCmd.Run(); err != nil {
-		fmt.Printf("命令 '%s' 不存在或执行失败，不进行保存\n", cmdParts[0])
-		return ""
+	// 如果是相对路径或绝对路径
+	if strings.Contains(cmdName, "/") || strings.HasPrefix(cmdName, "./") {
+		// 获取完整路径
+		var fullPath string
+		if strings.HasPrefix(cmdName, "./") {
+			pwd, err := os.Getwd()
+			if err != nil {
+				fmt.Printf("获取当前工作目录失败: %v\n", err)
+				return ""
+			}
+			fullPath = filepath.Join(pwd, cmdName[2:]) // 移除 "./"
+		} else {
+			fullPath = cmdName
+		}
+
+		// 检查文件是否存在
+		if _, err := os.Stat(fullPath); err != nil {
+			if os.IsNotExist(err) {
+				fmt.Printf("文件不存在: %s\n", fullPath)
+			} else {
+				fmt.Printf("检查文件时出错: %v\n", err)
+			}
+			return ""
+		}
+	} else {
+		// 对于系统命令，使用 which 检查
+		var checkCmd *exec.Cmd
+		if runtime.GOOS == "windows" {
+			checkCmd = exec.Command("where", cmdName)
+		} else {
+			checkCmd = exec.Command("which", cmdName)
+		}
+
+		if err := checkCmd.Run(); err != nil {
+			fmt.Printf("命令 '%s' 不存在\n", cmdName)
+			return ""
+		}
 	}
 
 	return lastCmd
