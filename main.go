@@ -62,14 +62,14 @@ func saveCommand(db *sql.DB, command, description string) {
 	command = strings.TrimSpace(command)
 	description = strings.TrimSpace(description)
 
-	stmt, err := db.Prepare("INSERT INTO command_history(command, description, created_at) VALUES(?, ?, ?)")
+	stmt, err := db.Prepare("INSERT INTO command_history(command, description, created_at) VALUES(?, ?, datetime('now', 'localtime'))")
 	if err != nil {
 		fmt.Println("准备SQL语句时出错:", err)
 		return
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(command, description, time.Now())
+	_, err = stmt.Exec(command, description)
 	if err != nil {
 		fmt.Println("保存命令时出错:", err)
 		return
@@ -91,6 +91,10 @@ func getLastCommand() string {
 
 	// 检测当前的 shell
 	shell := os.Getenv("SHELL")
+	if shell == "" {
+		fmt.Println("无法检测到当前shell类型")
+		return ""
+	}
 
 	var histFile string
 	var isZsh bool
@@ -105,7 +109,7 @@ func getLastCommand() string {
 		histFile = filepath.Join(home, ".bash_history")
 		isZsh = false
 	} else {
-		fmt.Println("不支持的shell类型")
+		fmt.Printf("不支持的shell类型: %s\n", shell)
 		return ""
 	}
 
@@ -122,15 +126,14 @@ func getLastCommand() string {
 		return ""
 	}
 
+	// 将内容转换为字符串并按行分割
 	lines := strings.Split(string(content), "\n")
-	startIdx := len(lines) - 10
-	if startIdx < 0 {
-		startIdx = 0
+	if len(lines) == 0 {
+		fmt.Println("历史文件为空")
+		return ""
 	}
-	lines = lines[startIdx:]
 
-	// 获取最后一行非空命令
-	var lastCmd string
+	// 从后向前遍历，查找最后一条有效命令
 	for i := len(lines) - 1; i >= 0; i-- {
 		line := strings.TrimSpace(lines[i])
 		if line == "" {
@@ -138,10 +141,18 @@ func getLastCommand() string {
 		}
 
 		// 处理 zsh 特殊格式
-		if isZsh && strings.Contains(line, ";") {
-			parts := strings.SplitN(line, ";", 2)
-			if len(parts) >= 2 {
-				line = strings.TrimSpace(parts[1])
+		if isZsh {
+			// zsh历史格式可能是: ": 时间戳:0;命令"
+			if strings.Contains(line, ":0;") {
+				parts := strings.SplitN(line, ":0;", 2)
+				if len(parts) >= 2 {
+					line = strings.TrimSpace(parts[1])
+				}
+			} else if strings.Contains(line, ";") {
+				parts := strings.SplitN(line, ";", 2)
+				if len(parts) >= 2 {
+					line = strings.TrimSpace(parts[1])
+				}
 			}
 		}
 
@@ -153,64 +164,45 @@ func getLastCommand() string {
 			continue
 		}
 
-		lastCmd = line
-		break
-	}
-
-	if lastCmd == "" {
-		return ""
-	}
-
-	// 检查命令是否有效
-	cmdParts := strings.Fields(lastCmd)
-	if len(cmdParts) == 0 {
-		fmt.Println("无效的命令格式")
-		return ""
-	}
-
-	// 检查命令是否存在
-	cmdName := cmdParts[0]
-
-	// 如果是相对路径或绝对路径
-	if strings.Contains(cmdName, "/") || strings.HasPrefix(cmdName, "./") {
-		// 获取完整路径
-		var fullPath string
-		if strings.HasPrefix(cmdName, "./") {
-			pwd, err := os.Getwd()
-			if err != nil {
-				fmt.Printf("获取当前工作目录失败: %v\n", err)
-				return ""
-			}
-			fullPath = filepath.Join(pwd, cmdName[2:]) // 移除 "./"
-		} else {
-			fullPath = cmdName
+		// 解析命令
+		cmdParts := strings.Fields(line)
+		if len(cmdParts) == 0 {
+			continue
 		}
 
-		// 检查文件是否存在
-		if _, err := os.Stat(fullPath); err != nil {
-			if os.IsNotExist(err) {
-				fmt.Printf("文件不存在: %s\n", fullPath)
+		// 验证命令
+		cmdName := cmdParts[0]
+		if strings.Contains(cmdName, "/") || strings.HasPrefix(cmdName, "./") {
+			// 处理相对路径或绝对路径
+			var fullPath string
+			if strings.HasPrefix(cmdName, "./") {
+				pwd, err := os.Getwd()
+				if err != nil {
+					fmt.Printf("获取当前工作目录失败: %v\n", err)
+					continue
+				}
+				fullPath = filepath.Join(pwd, cmdName[2:])
 			} else {
-				fmt.Printf("检查文件时出错: %v\n", err)
+				fullPath = cmdName
 			}
-			return ""
-		}
-	} else {
-		// 对于系统命令，使用 which 检查
-		var checkCmd *exec.Cmd
-		if runtime.GOOS == "windows" {
-			checkCmd = exec.Command("where", cmdName)
+
+			if _, err := os.Stat(fullPath); err != nil {
+				continue
+			}
 		} else {
-			checkCmd = exec.Command("which", cmdName)
+			// 使用 which 命令检查系统命令
+			cmd := exec.Command("which", cmdName)
+			if err := cmd.Run(); err != nil {
+				continue
+			}
 		}
 
-		if err := checkCmd.Run(); err != nil {
-			fmt.Printf("命令 '%s' 不存在\n", cmdName)
-			return ""
-		}
+		fmt.Printf("找到最后一条命令: %s\n", line)
+		return line
 	}
 
-	return lastCmd
+	fmt.Println("未找到有效的历史命令")
+	return ""
 }
 
 func listCommands(db *sql.DB) {
@@ -250,11 +242,11 @@ func listCommandsByDay(db *sql.DB) {
 	// 查询近7天的命令，按天分组
 	rows, err := db.Query(`
 		WITH RECURSIVE dates(date) AS (
-			SELECT date('now', '-6 days')
+			SELECT date('now', 'localtime', '-6 days')
 			UNION ALL
 			SELECT date(date, '+1 day')
 			FROM dates
-			WHERE date < date('now')
+			WHERE date < date('now', 'localtime')
 		)
 		SELECT 
 			dates.date as day,
@@ -291,7 +283,7 @@ func listCommandsByDay(db *sql.DB) {
 		fmt.Printf("%-6s | %-30s | %-30s | %s\n", "ID", "时间", "命令", "描述")
 		fmt.Println("--------------------------------------------------------------------------------")
 
-		// 如果这一天没有命令，继续下一天
+		// 如果这一天没有��令，继续下一天
 		if !ids.Valid || ids.String == "" {
 			fmt.Println("(没有记录)")
 			continue
@@ -314,7 +306,11 @@ func listCommandsByDay(db *sql.DB) {
 			}
 
 			// 解析并格式化时间
-			t, _ := time.Parse("2006-01-02 15:04:05", strings.Split(timeList[i], ".")[0])
+			t, err := time.Parse("2006-01-02 15:04:05", strings.Split(timeList[i], ".")[0])
+			if err != nil {
+				fmt.Printf("解析时间出错: %v\n", err)
+				continue
+			}
 			timeStr := t.Format("15:04:05")
 
 			fmt.Printf("%-6s | %-30s | %-30s | %s\n", id, timeStr, cmd, desc)
@@ -383,7 +379,7 @@ func deleteCommand(db *sql.DB, id int) {
 
 	rowsAffected, _ := result.RowsAffected()
 	if rowsAffected > 0 {
-		fmt.Printf("成功删除ID为 %d 的记录\n", id)
+		fmt.Printf("成功删除ID为 %d ��记录\n", id)
 	}
 }
 
@@ -429,7 +425,7 @@ func main() {
 			id := 0
 			_, err := fmt.Sscanf(os.Args[2], "%d", &id)
 			if err != nil || id <= 0 {
-				fmt.Println("错误: ID必须是一个有效的正整数")
+				fmt.Println("错误: ID必须��一个有效的正整数")
 				return
 			}
 			db := initDB()
