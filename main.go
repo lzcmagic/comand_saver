@@ -115,108 +115,49 @@ func getLastCommand() string {
 		return ""
 	}
 
-	// 使用 fc 命令获取最后一条命令
-	var cmd *exec.Cmd
-	if isZsh {
-		cmd = exec.Command("zsh", "-i", "-c", "fc -ln -1")
-	} else {
-		cmd = exec.Command("bash", "-i", "-c", "fc -ln -1")
-	}
-
-	// 设置环境变量
-	cmd.Env = append(os.Environ(),
-		"HISTFILE="+histFile,
-		"HISTSIZE=1000",
-		"SAVEHIST=1000",
-		"LC_ALL=en_US.UTF-8",
-		"LANG=en_US.UTF-8",
-	)
-
-	output, err := cmd.Output()
+	// 直接读取历史文件
+	content, err := os.ReadFile(histFile)
 	if err != nil {
-		// 如果 fc 命令失败，尝试直接读取历史文件
-		content, err := os.ReadFile(histFile)
-		if err != nil {
-			fmt.Printf("读取历史文件出错: %v\n", err)
-			return ""
-		}
-
-		lines := strings.Split(string(content), "\n")
-		startIdx := len(lines) - 10
-		if startIdx < 0 {
-			startIdx = 0
-		}
-		lines = lines[startIdx:]
-
-		// 获取最后一行非空命令
-		var lastCmd string
-		for i := len(lines) - 1; i >= 0; i-- {
-			line := strings.TrimSpace(lines[i])
-			if line == "" {
-				continue
-			}
-
-			// 处理 zsh 特殊格式
-			if isZsh && strings.Contains(line, ";") {
-				parts := strings.SplitN(line, ";", 2)
-				if len(parts) >= 2 {
-					line = strings.TrimSpace(parts[1])
-				}
-			}
-
-			// 排除当前程序的命令和空命令
-			if line == "" ||
-				strings.HasPrefix(line, "./cs") ||
-				strings.HasPrefix(line, "cs ") ||
-				strings.HasPrefix(line, "tail") ||
-				strings.HasPrefix(line, "type") ||
-				strings.HasPrefix(line, "go run main.go") ||
-				strings.HasPrefix(line, "fc") {
-				continue
-			}
-
-			lastCmd = line
-			break
-		}
-
-		if lastCmd == "" {
-			return ""
-		}
-
-		// 检查命令是否执行成功
-		cmdParts := strings.Fields(lastCmd)
-		if len(cmdParts) == 0 {
-			fmt.Println("无效的命令格式")
-			return ""
-		}
-
-		// 使用which命令检查命令是否存在
-		var checkCmd *exec.Cmd
-		if runtime.GOOS == "windows" {
-			checkCmd = exec.Command("where", cmdParts[0])
-		} else {
-			checkCmd = exec.Command("which", cmdParts[0])
-		}
-
-		if err := checkCmd.Run(); err != nil {
-			fmt.Printf("命令 '%s' 不存在或执行失败，不进行保存\n", cmdParts[0])
-			return ""
-		}
-
-		return lastCmd
+		fmt.Printf("读取历史文件出错: %v\n", err)
+		return ""
 	}
 
-	// 处理 fc 命令的输出
-	lastCmd := strings.TrimSpace(string(output))
+	lines := strings.Split(string(content), "\n")
+	startIdx := len(lines) - 10
+	if startIdx < 0 {
+		startIdx = 0
+	}
+	lines = lines[startIdx:]
 
-	// 排除当前程序的命令和空命令
-	if lastCmd == "" ||
-		strings.HasPrefix(lastCmd, "./cs") ||
-		strings.HasPrefix(lastCmd, "cs ") ||
-		strings.HasPrefix(lastCmd, "tail") ||
-		strings.HasPrefix(lastCmd, "type") ||
-		strings.HasPrefix(lastCmd, "go run main.go") ||
-		strings.HasPrefix(lastCmd, "fc") {
+	// 获取最后一行非空命令
+	var lastCmd string
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+
+		// 处理 zsh 特殊格式
+		if isZsh && strings.Contains(line, ";") {
+			parts := strings.SplitN(line, ";", 2)
+			if len(parts) >= 2 {
+				line = strings.TrimSpace(parts[1])
+			}
+		}
+
+		// 排除当前程序的命令和空命令
+		if line == "" ||
+			strings.HasPrefix(line, "./cs") ||
+			strings.HasPrefix(line, "cs ") ||
+			strings.HasPrefix(line, "go run main.go") {
+			continue
+		}
+
+		lastCmd = line
+		break
+	}
+
+	if lastCmd == "" {
 		return ""
 	}
 
